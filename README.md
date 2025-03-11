@@ -5,10 +5,13 @@ Aquest projecte permet explorar un domini web i detectar errors 4XX utilitzant P
 ## Pas 1: Configurar l'entorn
 
 ### Instal·la Python i Pip
+
 Primer, assegura't de tenir Python instal·lat a la teva màquina. També necessitaràs `pip` per gestionar les biblioteques (ve amb les versions modernes de Python). Pots descarregar Python des d'aquí: [https://www.python.org/downloads/](https://www.python.org/downloads/).
 
 ### Instal·la les dependències
+
 Executa les següents ordres al terminal per instal·lar les biblioteques necessàries:
+
 ```sh
 pip install selenium requests beautifulsoup4 pandas
 ```
@@ -29,6 +32,7 @@ Ens descarregarem un WebDriver compatible amb el nostre navegador. En aquest exe
    - Guarda els canvis.
 
 Per verificar la instal·lació, obre un terminal i executa:
+
 ```sh
 chromedriver --version
 ```
@@ -38,25 +42,94 @@ chromedriver --version
 Crearem un nou fitxer Python, anomenat `crawler_4xx.py`, i l'editarem amb Visual Studio Code. Pots descarregar VS Code aquí: [https://code.visualstudio.com/](https://code.visualstudio.com/).
 
 A dins del fitxer, importarem les biblioteques necessàries:
+
 ```python
-import selenium
+from selenium import webdriver
+from bs4 import BeautifulSoup
 import requests
-import beautifulsoup4
 import pandas as pd
+from urllib.parse import urljoin
+import time
 ```
 
 ## Pas 3: Funcionalitat d'exploració del domini
 
-1. Afegir les funcions per extreure enllaços i explorar el domini de manera recursiva.
-2. Implementar la detecció d'errors 4XX.
-3. Generar un informe en format CSV (`errors_4xx.csv`).
-4. Afegir el bloc principal del programa per integrar-ho tot.
+### Funció per extreure enllaços d'una pàgina
+```python
+def get_links(url, driver):
+    driver.get(url)
+    time.sleep(2)
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    links = set()
+    for a_tag in soup.find_all("a", href=True):
+        link = urljoin(url, a_tag['href'])
+        if link.startswith("http://quotes.toscrape.com/"):
+            links.add(link)
+    return links
+```
 
-L'exploració es realitzarà sobre la pàgina [http://quotes.toscrape.com/](http://quotes.toscrape.com/).
+### Funció per explorar el domini de manera recursiva
+```python
+def crawl_domain(start_url, driver, visited=set()):
+    to_visit = [start_url]
+    while to_visit:
+        url = to_visit.pop()
+        if url not in visited:
+            visited.add(url)
+            new_links = get_links(url, driver)
+            to_visit.extend(new_links - visited)
+    return visited
+```
+
+### Funció per verificar l'estat HTTP d'una URL
+```python
+def check_url_status(url):
+    try:
+        response = requests.head(url, timeout=5)
+        return response.status_code
+    except requests.RequestException:
+        return None
+```
+
+### Funció per trobar errors 4XX en una llista de URLs
+```python
+def find_4xx_errors(urls):
+    errors = []
+    for url in urls:
+        status_code = check_url_status(url)
+        if status_code and 400 <= status_code < 500:
+            errors.append((url, status_code))
+    return errors
+```
+
+### Funció per guardar els errors en un fitxer CSV
+```python
+def save_to_csv(errors, filename="errors_4xx.csv"):
+    df = pd.DataFrame(errors, columns=["URL", "HTTP Status"])
+    df.to_csv(filename, index=False)
+    print(f"Informe guardat a {filename}")
+```
+
+### Bloc principal
+```python
+if __name__ == "__main__":
+    start_url = "http://quotes.toscrape.com/"
+    driver = webdriver.Chrome()
+    print(f"Explorant el domini {start_url}...")
+    visited_urls = crawl_domain(start_url, driver)
+    print(f"Total URLs visitades: {len(visited_urls)}")
+    print("Verificant errors 4XX...")
+    errors_4xx = find_4xx_errors(visited_urls)
+    print(f"Total errors 4XX trobats: {len(errors_4xx)}")
+    save_to_csv(errors_4xx)
+    driver.quit()
+    print("Exploració finalitzada!")
+```
 
 ## Pas 4: Executar el fitxer i comprovar els resultats
 
 Desa els canvis al fitxer `crawler_4xx.py` i executa el programa des del terminal:
+
 ```sh
 python crawler_4xx.py
 ```
